@@ -1,0 +1,53 @@
+#!/usr/bin/env -S uv run --env-file /home/mort/.local/bin/.env-pramblr --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#   "gpxplotter>=0.2.12",
+#   "rich>=13.7.1",
+#   "click>=8.1.8",
+# ]
+# ///
+
+# SPDX-FileCopyrightText: (C) Richard Mortier <mort@cantab.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+"""Produce Ramblr-like pages from GPX files and photos."""
+
+# pyright: reportAny=false
+# pyright: reportAttributeAccessIssue=false
+# pyright: reportMissingParameterType=false
+# pyright: reportPrivateLocalImportUsage=false
+# pyright: reportUnknownArgumentType=false
+# pyright: reportUnknownMemberType=false
+# pyright: reportUnknownParameterType=false
+# pyright: reportUnknownVariableType=false
+# pyright: reportUntypedFunctionDecorator=false
+
+import logging
+import click
+from rich.console import Console
+from rich.logging import RichHandler
+
+errcon = Console(stderr=True)
+logging.basicConfig(
+    level="INFO",
+    format="%(message)s",
+    datefmt="[%X]",
+    handlers=[RichHandler(console=errcon, rich_tracebacks=True)],
+)
+log = logging.getLogger(__name__)
+
+
+@click.command(context_settings={"show_default": True, "ignore_unknown_options": True})
+@click.option("--debug", default=False, is_flag=True, help="Turn on verbose logging.")
+def pramblr(
+    debug: bool,
+) -> None:
+    """."""
+
+    if debug:
+        log.setLevel(logging.DEBUG)
+
+if __name__ == "__main__":
+    pramblr()

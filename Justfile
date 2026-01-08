@@ -11,3 +11,9 @@ TARGET := "pramblr"
 # install target
 install:
     ln -sf {{PWD}}/{{TARGET}} ~/.local/bin/
+    ln -sf {{PWD}}/.env ~/.local/bin/.env-{{TARGET}}
+
+# uninstall target
+uninstall:
+    rm ~/.local/bin/{{TARGET}}
+    rm ~/.local/bin/.env-{{TARGET}}
