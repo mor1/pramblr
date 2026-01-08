@@ -30,6 +30,7 @@ import logging
 from pathlib import Path
 
 import click
+import gpxplotter as gpxp
 import yaml_rs as yaml
 from rich.console import Console
 from rich.logging import RichHandler
@@ -92,6 +93,17 @@ def pramblr(
     # build list of photos
     photos = tuple(Path(p) for p in config.get("photos", photos)) if config else photos
     log.debug(f"{photos=}")
+
+    # build a map with the tracks overlaid
+    m = gpxp.create_folium_map()
+    for gpx in gpxs:
+        with open(gpx.expanduser(), "r") as fp:
+            for track in gpxp.read_gpx_file(fp):
+                for _i, segment in enumerate(track["segments"]):
+                    gpxp.add_segment_to_map(m, segment)
+
+    m.save(outf)
+
 
 if __name__ == "__main__":
     pramblr()
