@@ -52,10 +52,17 @@ log = logging.getLogger(__name__)
     required=False,
     type=click.Path(dir_okay=False, writable=True, allow_dash=True, path_type=Path),
 )
+@click.option(
+    "--gpxs",
+    type=click.Path(exists=True, dir_okay=True, path_type=Path),
+    multiple=True,
+    help="GPX files of the track.",
+)
 def pramblr(
     configf: click.File,
     debug: bool,
     outf: click.File,
+    gpxs: tuple[Path, ...],
 ) -> None:
     """."""
 
@@ -70,6 +77,10 @@ def pramblr(
     # output file
     outf = click.open_file(config.get("outf", outf) if config else outf, mode="wb")
     log.debug(f"{outf=}")
+
+    # build list of GPX tracks
+    gpxs = tuple(Path(p) for p in config.get("gpxs", gpxs)) if config else gpxs
+    log.debug(f"{gpxs=}")
 
 if __name__ == "__main__":
     pramblr()
