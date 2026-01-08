@@ -1,9 +1,5 @@
 [tool.basedpyright]
 extraPaths = [
-  # obtain the relevant script-specific component via
-  #
-  # uv python find --script pramblr | cut -d"/" -f7`
-  #
   "/home/mort/.cache/uv/environments-v2/pramblr-939a5532dd93e054/lib/python3.13/site-packages",
 ]
 typeCheckingMode = "all"

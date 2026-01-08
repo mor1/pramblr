@@ -8,6 +8,10 @@ _default:
 PWD := env("PWD")
 TARGET := "pramblr"
 
+# print uv venv path
+@get-venv:
+    uv python find --script {{TARGET}} | cut -d"/" -f7
+
 # install target
 install:
     ln -sf {{PWD}}/{{TARGET}} ~/.local/bin/
