@@ -78,6 +78,8 @@ def build_map(gpxs) -> bytes:
     required=False,
     type=click.Path(dir_okay=False, writable=True, allow_dash=True, path_type=None),
 )
+@click.option(
+    "--title", type=str, default="Untitled map", help="Title of the generated map."
 )
 @click.option(
     "--gpxs",
@@ -95,6 +97,7 @@ def pramblr(
     configf: click.File,
     debug: bool,
     outf: str,
+    title: str,
     gpxs: tuple[pathlib.Path, ...],
     photos: tuple[pathlib.Path, ...],
 ) -> None:
@@ -111,6 +114,10 @@ def pramblr(
     # output filename
     outf: str = config.get("outf", outf) if config else ("-" if not outf else outf)
     log.debug(f"{outf=}")
+
+    # title
+    title: str = config.get("title", outf) if config else title
+    log.debug(f"{title=}")
 
     # build list of GPX tracks
     gpxs = (
@@ -131,6 +138,8 @@ def pramblr(
     # make map and munge its HTML
     html = build_map(gpxs)
     soup = bs4.BeautifulSoup(html, "html.parser")
+    soup.title = soup.new_tag("title")
+    soup.title.string = title
     scripts = soup.find_all("script")
 
     # grab HTML of the map
