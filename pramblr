@@ -2,6 +2,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
+#   "beautifulsoup4>=4.14.3",
 #   "gpxplotter>=0.2.12",
 #   "rich>=13.7.1",
 #   "click>=8.1.8",
@@ -26,11 +27,13 @@
 # pyright: reportUntypedFunctionDecorator=false
 # pyright: reportOptionalMemberAccess
 
+import io
 import logging
-from pathlib import Path
+import pathlib
 
+import bs4
 import click
-import gpxplotter as gpxp
+import gpxplotter as gx
 import yaml_rs as yaml
 from rich.console import Console
 from rich.logging import RichHandler
@@ -45,32 +48,55 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
+class BytesIONoClose(io.BytesIO):
+    """In-memory BytesIO file-like object, that doesn't close on save()."""
+
+    @override
+    def close(self):
+        pass
+
+
+def build_map(gpxs) -> bytes:
+    """Build a map with the tracks overlaid."""
+    map = gx.create_folium_map()
+    for gpx in gpxs:
+        with open(gpx, "r") as fp:
+            for track in gx.read_gpx_file(fp):
+                for segment in track["segments"]:
+                    gx.add_segment_to_map(map, segment)
+
+    html = BytesIONoClose()
+    map.save(html)
+    return html.getvalue()
+
+
 @click.command(context_settings={"show_default": True, "ignore_unknown_options": True})
 @click.argument("configf", required=False, type=click.File("r"))
 @click.option("--debug", default=False, is_flag=True, help="Turn on verbose logging.")
 @click.option(
     "--outf",
     required=False,
-    type=click.Path(dir_okay=False, writable=True, allow_dash=True, path_type=Path),
+    type=click.Path(dir_okay=False, writable=True, allow_dash=True, path_type=None),
+)
 )
 @click.option(
     "--gpxs",
-    type=click.Path(exists=True, dir_okay=True, path_type=Path),
+    type=click.Path(exists=True, dir_okay=True, path_type=pathlib.Path),
     multiple=True,
     help="GPX files of the track.",
 )
 @click.option(
     "--photos",
-    type=click.Path(exists=True, dir_okay=True, path_type=Path),
+    type=click.Path(exists=True, dir_okay=True, path_type=pathlib.Path),
     multiple=True,
     help="Photos from the track.",
 )
 def pramblr(
     configf: click.File,
     debug: bool,
-    outf: click.File,
-    gpxs: tuple[Path, ...],
-    photos: tuple[Path, ...],
+    outf: str,
+    gpxs: tuple[pathlib.Path, ...],
+    photos: tuple[pathlib.Path, ...],
 ) -> None:
     """."""
 
@@ -82,27 +108,34 @@ def pramblr(
     config = yaml.loads(configf.read()) if configf else None
     log.debug(config)
 
-    # output file
-    outf = click.open_file(config.get("outf", outf) if config else outf, mode="wb")
+    # output filename
+    outf: str = config.get("outf", outf) if config else ("-" if not outf else outf)
     log.debug(f"{outf=}")
 
     # build list of GPX tracks
-    gpxs = tuple(Path(p) for p in config.get("gpxs", gpxs)) if config else gpxs
+    gpxs = (
+        tuple(pathlib.Path(p).expanduser() for p in config.get("gpxs", gpxs))
+        if config
+        else gpxs
+    )
     log.debug(f"{gpxs=}")
 
     # build list of photos
-    photos = tuple(Path(p) for p in config.get("photos", photos)) if config else photos
+    photos = (
+        tuple(pathlib.Path(p).expanduser() for p in config.get("photos", photos))
+        if config
+        else photos
+    )
     log.debug(f"{photos=}")
 
-    # build a map with the tracks overlaid
-    m = gpxp.create_folium_map()
-    for gpx in gpxs:
-        with open(gpx.expanduser(), "r") as fp:
-            for track in gpxp.read_gpx_file(fp):
-                for _i, segment in enumerate(track["segments"]):
-                    gpxp.add_segment_to_map(m, segment)
+    # make map and munge its HTML
+    html = build_map(gpxs)
+    soup = bs4.BeautifulSoup(html, "html.parser")
+    scripts = soup.find_all("script")
 
-    m.save(outf)
+    # grab HTML of the map
+    with click.open_file(outf, "w") as fp:
+        _ = fp.write(soup.prettify())
 
 
 if __name__ == "__main__":
