@@ -30,13 +30,17 @@
 import io
 import logging
 import pathlib
+import warnings
+from typing import override
 
 import bs4
 import click
 import gpxplotter as gx
+import numpy as np
 import yaml_rs as yaml
 from rich.console import Console
 from rich.logging import RichHandler
+from sklearn.cluster import KMeans
 
 errcon = Console(stderr=True)
 logging.basicConfig(
@@ -54,6 +58,47 @@ class BytesIONoClose(io.BytesIO):
     @override
     def close(self):
         pass
+
+
+# cluster_velocities() throws an error if you pass in a segment with fewer than
+# `n_clusters`(default: 5) waypoints. One of my tracks has a segment with only
+# four it turns out. So, monkey patch the funciton to clip `n_clusters` to the
+# minimum of 5 and the number of waypoints provided.
+def monkey_patch_cluster_velocities(velocities, n_clusters=5):
+    """Group the velocities into a predefined set of clusters.
+
+    This is used to label velocities as `faster`, `slower`, etc.
+
+    Parameters
+    ----------
+    velocities : array_like
+        The velocities to cluster.
+    n_clusters : int, optional
+        The number of clusters to look for.
+
+    Returns
+    -------
+    levels : array_like
+        The velocity level (cluster) each velocity is assigned to.
+
+    """
+
+    if np.isnan(velocities).any():
+        warnings.warn("Some velocities are NaN, skipping clustering")
+        return None
+    vel = np.array(velocities).reshape(-1, 1)
+    n_clusters = min(n_clusters, velocities.shape[0])
+    clu = KMeans(n_clusters=n_clusters, init="k-means++", n_init=10)
+    labels = clu.fit_predict(vel)
+    # Sort labels according to cluster centers so that a lower label
+    # is a lower velocity:
+    centers = clu.cluster_centers_.flatten()
+    idx = list(np.argsort(centers))
+    levels = np.array([idx.index(i) for i in labels], dtype=np.int_)
+    return levels
+
+
+gx.gpxread.cluster_velocities = monkey_patch_cluster_velocities
 
 
 def build_map(gpxs) -> bytes:
