@@ -3,10 +3,13 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #   "beautifulsoup4>=4.14.3",
-#   "gpxplotter>=0.2.12",
-#   "rich>=13.7.1",
 #   "click>=8.1.8",
+#   "gpxplotter>=0.2.12",
+#   "pillow-heif>=1.1.1",
+#   "pillow>=12.1.0",
+#   "rich>=13.7.1",
 #   "yaml-rs>=0.0.10",
+#   "yattag>=1.16.1",
 # ]
 # ///
 
@@ -50,6 +53,7 @@ if os.path.isfile("/etc/NIXOS") and (
     log.fatal("You must `unset LD_LIBRARY_PATH` when running NixOS")
     sys.exit(1)
 
+import datetime as dt  # noqa: E402
 import io  # noqa:E402
 import warnings  # noqa:E402
 from pathlib import Path  # noqa:E402
@@ -60,7 +64,10 @@ import click  # noqa:E402
 import folium  # noqa:E402
 import gpxplotter as gx  # noqa:E402
 import numpy as np  # noqa:E402
+import PIL.ExifTags as exiftags  # noqa: E402
+import pillow_heif  # noqa: E402
 import yaml_rs as yaml  # noqa:E402
+from PIL import Image  # noqa: E402
 from sklearn.cluster import KMeans  # noqa:E402
 
 
@@ -113,16 +120,85 @@ def monkey_patch_cluster_velocities(velocities, n_clusters=5):
 gx.gpxread.cluster_velocities = monkey_patch_cluster_velocities
 
 
-def build_map(gpxs) -> bytes:
+def convert_photos(outf, photos):
+    webps: list[Path] = []
+    prefix = Path(outf).parent
+
+    for photo in [p for p in photos if Path(p).suffix.lower() == ".heic"]:
+        output = prefix / Path(photo).with_suffix(".webp").name
+        log.debug(f"{photo=} {output=}")
+
+        webps.append(output)
+
+        log.debug(f"{output.is_file()}")
+        log.debug(f"{os.access(output, os.R_OK)=}")
+        if output.is_file() and os.access(output, os.R_OK):
+            log.info(f"skipping file {output}")
+            continue
+
+        with Image.open(photo) as image:
+            image.thumbnail((640, 480))
+            image.save(output, "WEBP", quality=85, exif=image.getexif(), optimize=True)
+
+    return webps
+
+
+def location_of(path) -> tuple[float, float, float, dt.datetime]:
+    image = Image.open(path)
+
+    exif = image.getexif()
+    exifinfo = {exiftags.TAGS.get(k, k): v for k, v in exif.items()}
+    timestamp = dt.datetime.strptime(exifinfo["DateTime"], "%Y:%m:%d %H:%M:%S")
+
+    ifdkey = [k for k, v in exiftags.TAGS.items() if v == "GPSInfo"][0]
+    ifd = exif.get_ifd(ifdkey)
+    gpsinfo = {exiftags.GPSTAGS.get(k, k): v for k, v in ifd.items()}
+
+    degrees, minutes, seconds = gpsinfo["GPSLatitude"]
+    latitude = degrees + (minutes / 60.0) + (seconds / 3600.0)
+    if gpsinfo["GPSLatitudeRef"] == "S":
+        latitude *= -1
+
+    degrees, minutes, seconds = gpsinfo["GPSLongitude"]
+    longitude = degrees + (minutes / 60.0) + (seconds / 3600.0)
+    if gpsinfo["GPSLongitudeRef"] == "W":
+        longitude *= -1
+
+    altitude = gpsinfo["GPSAltitude"]
+    if gpsinfo["GPSAltitudeRef"] in (1, 3):  # below sealevel, negative sealevel
+        altitude *= -1
+
+    return latitude, longitude, altitude, timestamp
+
+
+def build_map(gpxs, webps) -> bytes:
     """Build a map with the tracks overlaid."""
+
+    # create the map object
     map = gx.create_folium_map()
+
+    # attach track(s) to the map
     for gpx in gpxs:
         with open(gpx, "r") as fp:
             for track in gx.read_gpx_file(fp):
                 for segment in track["segments"]:
-                    gx.add_segment_to_map(map, segment)
+                    gx.add_segment_to_map(map, segment, color_by="elevation")
 
-    folium.LayerControl(sortLayers=True).add_to(map)
+    # attach photos to the track; HEIC input only for now
+    for webp in webps:
+        latitude, longitude, altitude, ts = location_of(webp)
+        log.debug(f"{ts=} {latitude=} {longitude=} {altitude=}")
+
+        marker = folium.Marker(
+            location=(latitude, longitude),
+            tooltip=f"{webp.name} @ {ts}",
+            icon=folium.Icon(icon="camera", color="green"),
+        )
+        _ = marker.add_to(map)
+
+    boundary = map.get_bounds()
+    map.fit_bounds(boundary, padding=(32, 32))
+
     html = BytesIONoClose()
     map.save(html)
     return html.getvalue()
@@ -197,8 +273,11 @@ def pramblr(
     if not config and len(gpxs) == 0:
         raise click.UsageError("no configuration or GPX files were provided")
 
+    # convert photos if needed
+    webps = convert_photos(outf, photos)
+
     # make map and munge its HTML
-    html = build_map(gpxs)
+    html = build_map(gpxs, webps)
     soup = bs4.BeautifulSoup(html, "html.parser")
     soup.title = soup.new_tag("title")
     soup.title.string = title
@@ -209,4 +288,5 @@ def pramblr(
 
 
 if __name__ == "__main__":
+    pillow_heif.register_heif_opener()
     pramblr()
