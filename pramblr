@@ -51,8 +51,8 @@ if os.path.isfile("/etc/NIXOS") and (
     sys.exit(1)
 
 import io  # noqa:E402
-import pathlib  # noqa:E402
 import warnings  # noqa:E402
+from pathlib import Path  # noqa:E402
 from typing import override  # noqa:E402
 
 import bs4  # noqa:E402
@@ -141,13 +141,13 @@ def build_map(gpxs) -> bytes:
 )
 @click.option(
     "--gpxs",
-    type=click.Path(exists=True, dir_okay=True, path_type=pathlib.Path),
+    type=click.Path(exists=True, dir_okay=True, path_type=Path),
     multiple=True,
     help="GPX files of the track.",
 )
 @click.option(
     "--photos",
-    type=click.Path(exists=True, dir_okay=True, path_type=pathlib.Path),
+    type=click.Path(exists=True, dir_okay=True, path_type=Path),
     multiple=True,
     help="Photos from the track.",
 )
@@ -156,8 +156,8 @@ def pramblr(
     debug: bool,
     outf: str,
     title: str,
-    gpxs: tuple[pathlib.Path, ...],
-    photos: tuple[pathlib.Path, ...],
+    gpxs: tuple[Path, ...],
+    photos: tuple[Path, ...],
 ) -> None:
     """."""
 
@@ -179,7 +179,7 @@ def pramblr(
 
     # build list of GPX tracks
     gpxs = (
-        tuple(pathlib.Path(p).expanduser() for p in config.get("gpxs", gpxs))
+        tuple(Path(p).expanduser() for p in config.get("gpxs", gpxs))
         if config
         else gpxs
     )
@@ -187,7 +187,7 @@ def pramblr(
 
     # build list of photos
     photos = (
-        tuple(pathlib.Path(p).expanduser() for p in config.get("photos", photos))
+        tuple(Path(p).expanduser() for p in config.get("photos", photos))
         if config
         else photos
     )
