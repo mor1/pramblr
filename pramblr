@@ -182,6 +182,10 @@ def pramblr(
     )
     log.debug(f"{photos=}")
 
+    # ensure we have something to do!
+    if not config and len(gpxs) == 0:
+        raise click.UsageError("no configuration or GPX files were provided")
+
     # make map and munge its HTML
     html = build_map(gpxs)
     soup = bs4.BeautifulSoup(html, "html.parser")
