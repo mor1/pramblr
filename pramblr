@@ -22,13 +22,13 @@
 # pyright: reportAny=false
 # pyright: reportAttributeAccessIssue=false
 # pyright: reportMissingParameterType=false
+# pyright: reportOptionalMemberAccess=false
 # pyright: reportPrivateLocalImportUsage=false
 # pyright: reportUnknownArgumentType=false
 # pyright: reportUnknownMemberType=false
 # pyright: reportUnknownParameterType=false
 # pyright: reportUnknownVariableType=false
 # pyright: reportUntypedFunctionDecorator=false
-# pyright: reportOptionalMemberAccess
 
 import logging
 
