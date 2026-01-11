@@ -35,6 +35,7 @@ from typing import override
 
 import bs4
 import click
+import folium
 import gpxplotter as gx
 import numpy as np
 import yaml_rs as yaml
@@ -110,6 +111,7 @@ def build_map(gpxs) -> bytes:
                 for segment in track["segments"]:
                     gx.add_segment_to_map(map, segment)
 
+    folium.LayerControl(sortLayers=True).add_to(map)
     html = BytesIONoClose()
     map.save(html)
     return html.getvalue()
