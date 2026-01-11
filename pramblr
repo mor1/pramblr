@@ -56,12 +56,13 @@ if os.path.isfile("/etc/NIXOS") and (
 import datetime as dt  # noqa: E402
 import io  # noqa:E402
 import warnings  # noqa:E402
-from pathlib import Path  # noqa:E402
+from pathlib import Path, PurePath  # noqa:E402
 from typing import override  # noqa:E402
 
 import bs4  # noqa:E402
 import click  # noqa:E402
 import folium  # noqa:E402
+import folium.plugins  # noqa:E402
 import gpxplotter as gx  # noqa:E402
 import numpy as np  # noqa:E402
 import PIL.ExifTags as exiftags  # noqa: E402
@@ -187,17 +188,28 @@ def build_map(gpxs, webps) -> bytes:
     # attach photos to the track; HEIC input only for now
     for webp in webps:
         latitude, longitude, altitude, ts = location_of(webp)
-        log.debug(f"{ts=} {latitude=} {longitude=} {altitude=}")
+        log.debug(f"{ts=} {latitude=} {longitude=} {altitude=} {webp=}")
 
+        # drop leading `content/` from the path
+        src = os.path.join("/", *webp.parts[1:])
+
+        # make the popup
+        popup = folium.Popup(
+            f'<img alt="{webp}" src={src} style="width:320px"/>',
+            lazy=True,
+        )
         marker = folium.Marker(
             location=(latitude, longitude),
             tooltip=f"{webp.name} @ {ts}",
+            popup=popup,
             icon=folium.Icon(icon="camera", color="green"),
         )
         _ = marker.add_to(map)
 
+    _ = folium.plugins.Fullscreen().add_to(map)
+
     boundary = map.get_bounds()
-    map.fit_bounds(boundary, padding=(32, 32))
+    map.fit_bounds(boundary, padding=(3, 3))
 
     html = BytesIONoClose()
     map.save(html)
