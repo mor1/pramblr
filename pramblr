@@ -27,21 +27,10 @@
 # pyright: reportUntypedFunctionDecorator=false
 # pyright: reportOptionalMemberAccess
 
-import io
 import logging
-import pathlib
-import warnings
-from typing import override
 
-import bs4
-import click
-import folium
-import gpxplotter as gx
-import numpy as np
-import yaml_rs as yaml
 from rich.console import Console
 from rich.logging import RichHandler
-from sklearn.cluster import KMeans
 
 errcon = Console(stderr=True)
 logging.basicConfig(
@@ -51,6 +40,28 @@ logging.basicConfig(
     handlers=[RichHandler(console=errcon, rich_tracebacks=True)],
 )
 log = logging.getLogger(__name__)
+
+import os  # noqa:E402
+import sys  # noqa:E402
+
+if os.path.isfile("/etc/NIXOS") and (
+    "-gcc-" not in os.environ.get("LD_LIBRARY_PATH", "")
+):
+    log.fatal("You must `unset LD_LIBRARY_PATH` when running NixOS")
+    sys.exit(1)
+
+import io  # noqa:E402
+import pathlib  # noqa:E402
+import warnings  # noqa:E402
+from typing import override  # noqa:E402
+
+import bs4  # noqa:E402
+import click  # noqa:E402
+import folium  # noqa:E402
+import gpxplotter as gx  # noqa:E402
+import numpy as np  # noqa:E402
+import yaml_rs as yaml  # noqa:E402
+from sklearn.cluster import KMeans  # noqa:E402
 
 
 class BytesIONoClose(io.BytesIO):
@@ -191,9 +202,8 @@ def pramblr(
     soup = bs4.BeautifulSoup(html, "html.parser")
     soup.title = soup.new_tag("title")
     soup.title.string = title
-    scripts = soup.find_all("script")
 
-    # grab HTML of the map
+    # output map HTML
     with click.open_file(outf, "w") as fp:
         _ = fp.write(soup.prettify())
 
