@@ -71,6 +71,8 @@ import yaml_rs as yaml  # noqa:E402
 from PIL import Image  # noqa: E402
 from sklearn.cluster import KMeans  # noqa:E402
 
+SUPPORTED_IMAGE_FORMATS = (".jpg", ".jpeg", ".heic")
+
 
 class BytesIONoClose(io.BytesIO):
     """In-memory BytesIO file-like object, that doesn't close on save()."""
@@ -121,15 +123,17 @@ def monkey_patch_cluster_velocities(velocities, n_clusters=5):
 gx.gpxread.cluster_velocities = monkey_patch_cluster_velocities
 
 
-def convert_photos(outf, photos):
+def convert_photos(outf: str, photos: tuple[Path]) -> list[Path]:
     webps: list[Path] = []
-    prefix = Path(outf).parent
+    prefix: Path = Path(outf).parent.expanduser()
 
-    for photo in [p for p in photos if Path(p).suffix.lower() == ".heic"]:
+    for photo in [
+        p for p in photos if Path(p).suffix.lower() in SUPPORTED_IMAGE_FORMATS
+    ]:
         output = prefix / Path(photo).with_suffix(".webp").name
         webps.append(output)
-
         log.debug(f"{output=} {output.is_file()} {os.access(output, os.R_OK)=}")
+
         if output.is_file() and os.access(output, os.R_OK):
             log.info(f"skipping file {output}")
             continue
@@ -299,7 +303,7 @@ def pramblr(
     soup.title.string = title
 
     # output map HTML
-    with click.open_file(outf, "w") as fp:
+    with click.open_file(Path(outf).expanduser(), "w") as fp:
         _ = fp.write(soup.prettify())
 
 
