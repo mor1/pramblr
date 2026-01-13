@@ -123,7 +123,7 @@ def monkey_patch_cluster_velocities(velocities, n_clusters=5):
 gx.gpxread.cluster_velocities = monkey_patch_cluster_velocities
 
 
-def convert_photos(outf: str, photos: tuple[Path]) -> list[Path]:
+def convert_photos(outf: str, photos: tuple[Path], overwrite: bool) -> list[Path]:
     webps: list[Path] = []
     prefix: Path = Path(outf).parent.expanduser()
 
@@ -134,7 +134,7 @@ def convert_photos(outf: str, photos: tuple[Path]) -> list[Path]:
         webps.append(output)
         log.debug(f"{output=} {output.is_file()} {os.access(output, os.R_OK)=}")
 
-        if output.is_file() and os.access(output, os.R_OK):
+        if not overwrite and output.is_file() and os.access(output, os.R_OK):
             log.info(f"skipping file {output}")
             continue
 
@@ -247,6 +247,9 @@ def build_map(gpxs, webps) -> bytes:
     multiple=True,
     help="Photos from the track.",
 )
+@click.option(
+    "--overwrite", default=False, is_flag=True, help="Overwrite existing photos."
+)
 def pramblr(
     configf: click.File,
     debug: bool,
@@ -254,6 +257,7 @@ def pramblr(
     title: str,
     gpxs: tuple[Path, ...],
     photos: tuple[Path, ...],
+    overwrite: bool,
 ) -> None:
     """."""
 
@@ -294,7 +298,7 @@ def pramblr(
         raise click.UsageError("no configuration or GPX files were provided")
 
     # convert photos if needed
-    webps = convert_photos(outf, photos)
+    webps = convert_photos(outf, photos, overwrite)
 
     # make map and munge its HTML
     html = build_map(gpxs, webps)
