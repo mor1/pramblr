@@ -205,7 +205,7 @@ def build_map(gpxs, webps, debug=False) -> bytes:
     """Build a map with the tracks overlaid."""
 
     # create the map object
-    map = gx.create_folium_map()
+    map = gx.create_folium_map(control_scale=True)
 
     # attach track(s) to the map
     for gpx in gpxs:
