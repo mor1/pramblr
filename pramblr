@@ -71,6 +71,7 @@ import pillow_heif  # noqa: E402
 import yaml_rs as yaml  # noqa:E402
 from PIL import Image  # noqa: E402
 from sklearn.cluster import KMeans  # noqa:E402
+from yattag import Doc  # noqa:E402
 
 SUPPORTED_IMAGE_FORMATS = (".jpg", ".jpeg", ".heic")
 
@@ -219,18 +220,21 @@ def build_map(gpxs, webps, debug=False) -> bytes:
         log.debug(f"{ts=} {latitude=} {longitude=} {altitude=} {webp=}")
 
         # drop leading `content/` from the path
-        src = os.path.join("/", *webp.parts[1:])
+        src: str = os.path.join("/", *webp.parts[1:])
 
         # make the popup
-        popup = folium.Popup(
-            f'<img alt="{webp}" src={src} style="width:320px"/>',
-            lazy=True,
-        )
-        marker = folium.Marker(
+        html, tag, text = doc, tag, text = Doc().tagtext()
+        with tag("a", href=str(src)):
+            html.stag("img", alt=str(webp), src=str(src))
+
+        popup: folium.Popup = folium.Popup(html=html.getvalue(), sticky=True, lazy=True)
+        tooltip: folium.Tooltip = folium.Tooltip(text=html.getvalue())
+        marker: folium.Marker = folium.Marker(
             location=(latitude, longitude),
-            tooltip=f"{webp.name} @ {ts}",
+            tooltip=tooltip,
             popup=popup,
             icon=folium.Icon(icon="camera", color="green"),
+            lazy=True,
         )
         _ = marker.add_to(map)
 
