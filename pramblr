@@ -146,7 +146,7 @@ def convert_photos(outf: str, photos: tuple[Path], overwrite: bool) -> list[Path
     return webps
 
 
-def location_of(path) -> tuple[float, float, float, dt.datetime]:
+def location_of(path, debug=False) -> tuple[float, float, float, dt.datetime]:
     image = Image.open(path)
 
     exif = image.getexif()
@@ -175,12 +175,13 @@ def location_of(path) -> tuple[float, float, float, dt.datetime]:
             altitude *= -1
     except KeyError as ke:
         log.info(f"failed to extract location from {path=}")
-        log.exception(f"{ke=}")
+        if debug:
+            log.exception(f"{ke=}")
 
     return latitude, longitude, altitude, timestamp
 
 
-def build_map(gpxs, webps) -> bytes:
+def build_map(gpxs, webps, debug=False) -> bytes:
     """Build a map with the tracks overlaid."""
 
     # create the map object
@@ -195,7 +196,7 @@ def build_map(gpxs, webps) -> bytes:
 
     # attach photos to the track; HEIC input only for now
     for webp in webps:
-        latitude, longitude, altitude, ts = location_of(webp)
+        latitude, longitude, altitude, ts = location_of(webp, debug)
         log.debug(f"{ts=} {latitude=} {longitude=} {altitude=} {webp=}")
 
         # drop leading `content/` from the path
@@ -301,7 +302,7 @@ def pramblr(
     webps = convert_photos(outf, photos, overwrite)
 
     # make map and munge its HTML
-    html = build_map(gpxs, webps)
+    html = build_map(gpxs, webps, debug)
     soup = bs4.BeautifulSoup(html, "html.parser")
     soup.title = soup.new_tag("title")
     soup.title.string = title
