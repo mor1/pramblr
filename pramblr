@@ -54,6 +54,7 @@ if os.path.isfile("/etc/NIXOS") and (
     sys.exit(1)
 
 import datetime as dt  # noqa: E402
+import glob  # noqa: E402
 import io  # noqa:E402
 import warnings  # noqa:E402
 from pathlib import Path, PurePath  # noqa:E402
@@ -127,13 +128,26 @@ def convert_photos(outf: str, photos: tuple[Path], overwrite: bool) -> list[Path
     webps: list[Path] = []
     prefix: Path = Path(outf).parent.expanduser()
 
+    prefix.mkdir(exist_ok=True, parents=True)
+    webps_to_delete = [Path(p) for p in glob.glob(str(prefix / "*.webp"))]
+    log.debug(f"{webps_to_delete=}")
+
     for photo in [
         p for p in photos if Path(p).suffix.lower() in SUPPORTED_IMAGE_FORMATS
     ]:
         output = prefix / Path(photo).with_suffix(".webp").name
-        webps.append(output)
-        log.debug(f"{output=} {output.is_file()} {os.access(output, os.R_OK)=}")
 
+        if output in webps:
+            log.warning(f"{photo=} would overwrite existing {output=}; skipping")
+            continue
+
+        if output in webps_to_delete:
+            log.debug(f"removing {output=} from {webps_to_delete=}")
+            webps_to_delete.remove(output)
+
+        webps.append(output)
+
+        log.debug(f"{output=} {output.is_file()} {os.access(output, os.R_OK)=}")
         if not overwrite and output.is_file() and os.access(output, os.R_OK):
             log.info(f"skipping file {output}")
             continue
@@ -142,6 +156,11 @@ def convert_photos(outf: str, photos: tuple[Path], overwrite: bool) -> list[Path
             log.info(f"converting {photo=} to {output=}")
             image.thumbnail((640, 480))
             image.save(output, "WEBP", quality=85, exif=image.getexif(), optimize=True)
+
+    log.debug(f"{webps_to_delete=}")
+    for f in webps_to_delete:
+        log.info(f"removing {f=} as no longer referenced in configuration")
+        f.unlink()
 
     return webps
 
