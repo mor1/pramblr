@@ -57,7 +57,7 @@ import datetime as dt  # noqa: E402
 import glob  # noqa: E402
 import io  # noqa:E402
 import warnings  # noqa:E402
-from pathlib import Path, PurePath  # noqa:E402
+from pathlib import Path  # noqa:E402
 from typing import override  # noqa:E402
 
 import bs4  # noqa:E402
