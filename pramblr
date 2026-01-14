@@ -38,7 +38,7 @@ from rich.logging import RichHandler
 errcon = Console(stderr=True)
 logging.basicConfig(
     level="INFO",
-    format="%(message)s",
+    format="%(filename)s:%(lineno)d->%(funcName)s %(message)s",
     datefmt="[%X]",
     handlers=[RichHandler(console=errcon, rich_tracebacks=True)],
 )
