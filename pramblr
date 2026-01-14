@@ -166,19 +166,34 @@ def convert_photos(outf: str, photos: tuple[Path], overwrite: bool) -> list[Path
     return webps
 
 
-def location_of(path, debug=False) -> tuple[float, float, float, dt.datetime]:
+def timestamp_of(path, debug=False) -> dt.datetime:
     image = Image.open(path)
 
     exif = image.getexif()
     exifinfo = {exiftags.TAGS.get(k, k): v for k, v in exif.items()}
     timestamp = dt.datetime.strptime(exifinfo["DateTime"], "%Y:%m:%d %H:%M:%S")
+    log.debug(f"{timestamp=}")
+    return timestamp
+
+
+def location_of(path, debug=False) -> tuple[float, float] | None:
+    image = Image.open(path)
+
+    exif = image.getexif()
+    exifinfo = {exiftags.TAGS.get(k, k): v for k, v in exif.items()}
+    log.debug(f"{exifinfo=}")
 
     ifdkey = [k for k, v in exiftags.TAGS.items() if v == "GPSInfo"][0]
     ifd = exif.get_ifd(ifdkey)
+    log.debug(f"{ifd=}")
+
     gpsinfo = {exiftags.GPSTAGS.get(k, k): v for k, v in ifd.items()}
     log.debug(f"{gpsinfo=}")
 
-    latitude = longitude = altitude = 0.0
+    if "GPSLatitude" not in gpsinfo:
+        return None
+
+    latitude = longitude = 0.0
     try:
         degrees, minutes, seconds = gpsinfo["GPSLatitude"]
         latitude = degrees + (minutes / 60.0) + (seconds / 3600.0)
@@ -190,15 +205,34 @@ def location_of(path, debug=False) -> tuple[float, float, float, dt.datetime]:
         if gpsinfo["GPSLongitudeRef"] == "W":
             longitude *= -1
 
-        altitude = gpsinfo["GPSAltitude"]
-        if gpsinfo["GPSAltitudeRef"] in (1, 3):  # below sealevel, negative sealevel
-            altitude *= -1
     except KeyError as ke:
-        log.info(f"failed to extract location from {path=}")
         if debug:
             log.exception(f"{ke=}")
+        return None
 
-    return latitude, longitude, altitude, timestamp
+    log.debug(f"{latitude=} {longitude=}")
+    return latitude, longitude
+
+
+def interpolate_location(timestamp, segment, debug=False) -> tuple[float, float] | None:
+    offset = dt.timedelta(0)  # time_offset, seconds
+    times = [t.replace(tzinfo=None) + offset for t in segment["time"]]
+    diff = []
+    for t in times:
+        d = (timestamp - t).seconds if t <= timestamp else (t - timestamp).seconds
+        diff.append(d)
+
+    log.debug(f"{len(diff)=} {len(segment["lat"])=} {len(segment["lon"])=}")
+
+    bestidx = np.argmin(diff)
+    log.debug(f"{bestidx=}")
+
+    (latitude, longitude) = segment["latlon"][bestidx]
+
+    log.debug(f"{timestamp=} {latitude=} {longitude=}")
+    return latitude, longitude
+
+
 
 
 def build_map(gpxs, webps, debug=False) -> bytes:
@@ -214,20 +248,32 @@ def build_map(gpxs, webps, debug=False) -> bytes:
                 for segment in track["segments"]:
                     gx.add_segment_to_map(map, segment, color_by="elevation")
 
-    # attach photos to the track; HEIC input only for now
+    # Attach photos to the track; HEIC input only for now
     for webp in webps:
-        latitude, longitude, altitude, ts = location_of(webp, debug)
-        log.debug(f"{ts=} {latitude=} {longitude=} {altitude=} {webp=}")
+        timestamp = timestamp_of(webp, debug)
+        source = "gps"
+        location = location_of(webp, debug)
+        if not location:
+            log.info(
+                f"failed to extract location from {webp=}; interpolating from timestamp"
+            )
+            source = "timestamp"
+            location = interpolate_location(timestamp, segment, debug)
 
-        # drop leading `content/` from the path
-        src: str = os.path.join("/", *webp.parts[1:])
+            if not location:
+                log.warning(f"could not obtain location for {webp=}; skipping")
+                continue
+
+        latitude, longitude = location
+        log.debug(f"{webp=} {timestamp=} {latitude=} {longitude=}")
 
         # make the popup
-        html, tag, text = doc, tag, text = Doc().tagtext()
+        src = webp.name
+        html, tag, text = Doc().tagtext()
         with tag("a", href=str(src)):
-            html.stag("img", alt=str(webp), src=str(src))
+            html.stag("img", alt=str(src), src=str(src))
 
-        popup: folium.Popup = folium.Popup(html=html.getvalue(), sticky=True, lazy=True)
+        popup: folium.Popup = folium.Popup(html=html.getvalue(), lazy=True)
         tooltip: folium.Tooltip = folium.Tooltip(text=html.getvalue())
         marker: folium.Marker = folium.Marker(
             location=(latitude, longitude),
