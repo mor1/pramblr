@@ -233,20 +233,59 @@ def interpolate_location(timestamp, segment, debug=False) -> tuple[float, float]
     return latitude, longitude
 
 
+def extend(
+    lsegment: dict[str, np.ndarray | list],
+    rsegment: dict[str, np.ndarray | list],
+) -> dict[str, np.ndarray | list]:
+    for k, v in rsegment.items():
+        match v:
+            case list():
+                if k not in lsegment:
+                    lsegment[k] = []
+                log.debug(f"list: pre: {k=} {len(lsegment[k])=} {len(v)=}")
+                lsegment[k].extend(v)
+                log.debug(f"list: post: {k=} {len(lsegment[k])=}")
+            case np.ndarray():
+                if k not in lsegment:
+                    lsegment[k] = np.empty_like(rsegment[k])
+                log.debug(f"ndarray: pre: {k=} {len(lsegment[k])=} {len(v)=}")
+                lsegment[k] = np.concatenate([lsegment[k], v])
+                log.debug(f"ndarray: post: {k=} {len(lsegment[k])=}")
+            case np.float64():  # noqa: reportUnnecessaryComparison
+                if k not in lsegment:
+                    lsegment[k] = 0.0
+                log.debug(f"float64: pre: {k=} {lsegment[k]=} {v=}")
+                lsegment[k] += rsegment[k]
+                log.debug(f"float64: post: {k=} {lsegment[k]=}")
+    return lsegment
 
 
 def build_map(gpxs, webps, debug=False) -> bytes:
     """Build a map with the tracks overlaid."""
 
-    # create the map object
+    # Create the map object
     map = gx.create_folium_map(control_scale=True)
 
-    # attach track(s) to the map
+    # Attach track(s) to the map; unfortunately, add_segment_to_map() and the
+    # functions it calls produces a legend colormap for each segment while we
+    # want start/end markers for each segment and a legend colormap (and line
+    # colouring) for the track ~ set of specified GPX files. So we accumulate
+    # all segments into a single segment, adding start/end markers as we go.
+    segment: dict[str, np.ndarry | list] = {}
     for gpx in gpxs:
         with open(gpx, "r") as fp:
             for track in gx.read_gpx_file(fp):
-                for segment in track["segments"]:
-                    gx.add_segment_to_map(map, segment, color_by="elevation")
+                for s in track["segments"]:
+                    segment = extend(segment, s)
+                    gx.folium_map.add_start_top_markers(map, s)  # sic
+
+    gx.add_segment_to_map(
+        the_map=map,
+        segment=segment,
+        fit_bounds=False,  # do this once at the end
+        color_by="elevation",
+        line_options={"weight": 8},
+    )
 
     # Attach photos to the track; HEIC input only for now
     for webp in webps:
