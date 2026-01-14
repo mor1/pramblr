@@ -323,11 +323,23 @@ def build_map(gpxs, webps, debug=False) -> bytes:
         )
         _ = marker.add_to(map)
 
+    # Enable map to go fullscreen
     _ = folium.plugins.Fullscreen().add_to(map)
 
+    # "Spiderify" overlapping markers so they can be clicked
+    oms = folium.plugins.OverlappingMarkerSpiderfier(
+        keep_spiderfied=True,
+        nearby_distance=100,  # px gap to decide markers overlap
+        circle_spiral_switchover=10,  # how many markers to switch circle to spiral
+        leg_weight=2.0,
+    )
+    _ = oms.add_to(map)
+
+    # Fit map to viewport
     boundary = map.get_bounds()
     map.fit_bounds(boundary, padding=(3, 3))
 
+    # Render map, returning the rendered content
     html = BytesIONoClose()
     map.save(html)
     return html.getvalue()
