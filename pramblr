@@ -295,12 +295,16 @@ def build_map(gpxs, webps, debug=False) -> bytes:
 
 
 @click.command(context_settings={"show_default": True, "ignore_unknown_options": True})
-@click.argument("configf", required=False, type=click.File("r"))
+@click.argument(
+    "configf", required=False, type=click.Path(dir_okay=False, path_type=Path)
+)
 @click.option("--debug", default=False, is_flag=True, help="Turn on verbose logging.")
 @click.option(
     "--outf",
     required=False,
+    default="map.html",
     type=click.Path(dir_okay=False, writable=True, allow_dash=True, path_type=None),
+    help="Path to the produced map.",
 )
 @click.option(
     "--title", type=str, default="Untitled map", help="Title of the generated map."
@@ -321,7 +325,7 @@ def build_map(gpxs, webps, debug=False) -> bytes:
     "--overwrite", default=False, is_flag=True, help="Overwrite existing photos."
 )
 def pramblr(
-    configf: click.File,
+    configf: Path,
     debug: bool,
     outf: str,
     title: str,
@@ -329,22 +333,25 @@ def pramblr(
     photos: tuple[Path, ...],
     overwrite: bool,
 ) -> None:
-    """."""
+    """Process a set of GPX tracks into an interactive HTML/CSS/JS map, attaching photos."""
 
     # verbose logging
     if debug:
         log.setLevel(logging.DEBUG)
 
     # parse configuration if provided
-    config = yaml.loads(configf.read()) if configf else None
-    log.debug(config)
+
+    with open(configf, "r") as fp:
+        config = yaml.loads(fp.read()) if configf else None
+    prefix = configf.expanduser().parent if configf else "."
+    log.debug(f"{configf=} {prefix=} {config=}")
 
     # output filename
-    outf: str = config.get("outf", outf) if config else ("-" if not outf else outf)
+    outf: Path = prefix / Path(config.get("outf", outf) if config else outf)
     log.debug(f"{outf=}")
 
     # title
-    title: str = config.get("title", outf) if config else title
+    title: str = config.get("title", title) if config else title
     log.debug(f"{title=}")
 
     # build list of GPX tracks
@@ -358,7 +365,7 @@ def pramblr(
     # build list of photos
     photos = (
         tuple(Path(p).expanduser() for p in config.get("photos", photos))
-        if config
+        if (config and config.get("photos", photos) is not None)
         else photos
     )
     log.debug(f"{photos=}")
