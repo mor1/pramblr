@@ -275,12 +275,16 @@ def build_map(gpxs, webps, debug=False) -> bytes:
     # colouring) for the track ~ set of specified GPX files. So we accumulate
     # all segments into a single segment, adding start/end markers as we go.
     segment: dict[str, np.ndarry | list] = {}
-    for gpx in gpxs:
-        with open(gpx, "r") as fp:
+    for gpxfile in gpxs:
+        with open(gpxfile, "r") as fp:
             for track in gx.read_gpx_file(fp):
+                trackseg: dict[str, np.ndarry | list] = {}
+
                 for s in track["segments"]:
+                    trackseg = extend(trackseg, s)
                     segment = extend(segment, s)
-                    gx.folium_map.add_start_top_markers(map, s)  # sic
+
+                gx.folium_map.add_start_top_markers(map, trackseg)  # sic
 
     gx.add_segment_to_map(
         the_map=map,
