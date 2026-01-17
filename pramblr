@@ -234,29 +234,32 @@ def interpolate_location(timestamp, segment, debug=False) -> tuple[float, float]
 
 
 def extend(
-    lsegment: dict[str, np.ndarray | list],
-    rsegment: dict[str, np.ndarray | list],
-) -> dict[str, np.ndarray | list]:
+    lsegment: dict[str, np.ndarray | np.float64 | list],
+    rsegment: dict[str, np.ndarray | np.float64 | list],
+) -> dict[str, np.ndarray | np.float64 | list]:
     for k, v in rsegment.items():
         match v:
             case list():
                 if k not in lsegment:
                     lsegment[k] = []
-                log.debug(f"list: pre: {k=} {len(lsegment[k])=} {len(v)=}")
+                # log.debug(f"list: pre: {k=} {len(lsegment[k])=} {len(v)=}")
                 lsegment[k].extend(v)
-                log.debug(f"list: post: {k=} {len(lsegment[k])=}")
+                # log.debug(f"list: post: {k=} {len(lsegment[k])=}")
             case np.ndarray():
                 if k not in lsegment:
                     lsegment[k] = np.empty_like(rsegment[k])
-                log.debug(f"ndarray: pre: {k=} {len(lsegment[k])=} {len(v)=}")
+                # log.debug(f"ndarray: pre: {k=} {len(lsegment[k])=} {len(v)=}")
                 lsegment[k] = np.concatenate([lsegment[k], v])
-                log.debug(f"ndarray: post: {k=} {len(lsegment[k])=}")
+                # log.debug(f"ndarray: post: {k=} {len(lsegment[k])=}")
             case np.float64():  # noqa: reportUnnecessaryComparison
                 if k not in lsegment:
                     lsegment[k] = 0.0
-                log.debug(f"float64: pre: {k=} {lsegment[k]=} {v=}")
+                # log.debug(f"float64: pre: {k=} {lsegment[k]=} {v=}")
                 lsegment[k] += rsegment[k]
-                log.debug(f"float64: post: {k=} {lsegment[k]=}")
+                # log.debug(f"float64: post: {k=} {lsegment[k]=}")
+            case int():
+                pass
+
     return lsegment
 
 
