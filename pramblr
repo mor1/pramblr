@@ -68,10 +68,10 @@ import folium  # noqa:E402
 import folium.plugins  # noqa:E402
 import gpxplotter as gx  # noqa:E402
 import numpy as np  # noqa:E402
+import PIL  # noqa: E402
 import PIL.ExifTags as exiftags  # noqa: E402
 import pillow_heif  # noqa: E402
 import yaml_rs as yaml  # noqa:E402
-from PIL import Image  # noqa: E402
 from sklearn.cluster import KMeans  # noqa:E402
 from timezonefinder import timezone_at  # noqa:E402
 from yattag import Doc  # noqa:E402
@@ -154,9 +154,10 @@ def convert_photos(outf: str, photos: tuple[Path], overwrite: bool) -> list[Path
             log.info(f"skipping file {output}")
             continue
 
-        with Image.open(photo) as image:
+        with PIL.Image.open(photo).convert("RGB") as image:
             log.info(f"converting {photo=} to {output=}")
             image.thumbnail((640, 480))
+            PIL.ImageOps.exif_transpose(image, in_place=True)
             image.save(output, "WEBP", quality=85, exif=image.getexif(), optimize=True)
 
     for f in webps_to_delete:
@@ -166,9 +167,7 @@ def convert_photos(outf: str, photos: tuple[Path], overwrite: bool) -> list[Path
     return webps
 
 
-def timestamp_of(path, debug=False) -> dt.datetime:
-    image = Image.open(path)
-
+def timestamp_of(image) -> dt.datetime:
     exif = image.getexif()
     exifinfo = {exiftags.TAGS.get(k, k): v for k, v in exif.items()}
     timestamp = dt.datetime.strptime(exifinfo["DateTime"], "%Y:%m:%d %H:%M:%S")
@@ -176,9 +175,7 @@ def timestamp_of(path, debug=False) -> dt.datetime:
     return timestamp
 
 
-def location_of(path, debug=False) -> tuple[float, float] | None:
-    image = Image.open(path)
-
+def location_of(image, debug=False) -> tuple[float, float] | None:
     exif = image.getexif()
     exifinfo = {exiftags.TAGS.get(k, k): v for k, v in exif.items()}
 
@@ -259,17 +256,15 @@ def build_map(gpxs, webps) -> bytes:
     # Create the map object
     map = gx.create_folium_map(control_scale=True)
 
-    # Attach track(s) to the map; unfortunately, add_segment_to_map() and the
-    # functions it calls produces a legend colormap for each segment while we
-    # want start/end markers for each segment and a legend colormap (and line
-    # colouring) for the track ~ set of specified GPX files. So we accumulate
-    # all segments into a single segment, adding start/end markers as we go.
+    # Accumulate track segments from each file into a `trackseg` so we can add
+    # start/end markers corresponding to each file (~day) and into `segment` so
+    # we get a single colormap legend.
     segment: dict[str, np.ndarry | list] = {}
     for gpxfile in gpxs:
         log.info(f"Processing GPX track {gpxfile=}")
         with open(gpxfile, "r") as fp:
             for track in gx.read_gpx_file(fp):
-                trackseg: dict[str, np.ndarry | list] = {}
+                trackseg: dict[str, np.ndarry | np.float64 | list] = {}
 
                 for s in track["segments"]:
                     trackseg = extend(trackseg, s)
@@ -287,23 +282,24 @@ def build_map(gpxs, webps) -> bytes:
 
     # Attach photos to the track
     for webp in webps:
-        timestamp = timestamp_of(webp, debug)
-        source = "gps"
-        location = location_of(webp, debug)
-        if not location:
-            log.info(
-                f"failed to extract location from {webp=}; interpolating from timestamp"
-            )
-            source = "timestamp"
-            location = interpolate_location(timestamp, segment, debug)
         log.info(f"Attaching image {webp=} to track...")
+        with PIL.Image.open(webp) as image:
+            timestamp = timestamp_of(image)
+            source = "gps"
+            location = location_of(image)
+            if not location:
+                log.info(
+                    f"Failed to extract location from {webp=}; interpolating from timestamp"
+                )
+                source = "timestamp"
+                location = interpolate_location(timestamp, segment)
 
             if not location:
-                log.warning(f"could not obtain location for {webp=}; skipping")
+                log.warning(f"Could not obtain location for {webp=}; skipping")
                 continue
 
-        latitude, longitude = location
-        log.debug(f"{webp=} {timestamp=} {latitude=} {longitude=}")
+            latitude, longitude = location
+            log.debug(f"{webp=} {timestamp=} {latitude=} {longitude=}")
 
         # make the popup
         src = webp.name
