@@ -7,6 +7,7 @@
 #   "gpxplotter>=0.2.12",
 #   "pillow-heif>=1.1.1",
 #   "pillow>=12.1.0",
+#   "reverse_geocoder>=1.5.1",
 #   "rich>=13.7.1",
 #   "timezonefinder>=8.2.1",
 #   "yaml-rs>=0.0.10",
@@ -71,6 +72,7 @@ import numpy as np  # noqa:E402
 import PIL  # noqa: E402
 import PIL.ExifTags as exiftags  # noqa: E402
 import pillow_heif  # noqa: E402
+import reverse_geocoder as rg  # noqa:E402
 import yaml_rs as yaml  # noqa:E402
 from sklearn.cluster import KMeans  # noqa:E402
 from timezonefinder import timezone_at  # noqa:E402
@@ -301,22 +303,37 @@ def build_map(gpxs, webps) -> bytes:
             latitude, longitude = location
             log.debug(f"{webp=} {timestamp=} {latitude=} {longitude=}")
 
-        # make the popup
-        src = webp.name
-        html, tag, text = Doc().tagtext()
-        with tag("a", href=str(src)):
-            html.stag("img", alt=str(src), src=str(src))
+            # make the popup
+            src = webp.name
+            html, tag, text = Doc().tagtext()
+            with tag(
+                "section",
+                klass="popup",
+                style="text-align:center; font-weight:bold; font-size:large",
+            ):
+                with tag("a", href=str(src)):
+                    with tag("figure"):
+                        html.stag("img", alt=str(src), src=str(src))
+                    with tag("figcaption"):
+                        place = rg.search((latitude, longitude))[0]
+                        log.debug(f"{place=}")
+                        address = f"{place['name']}, {place['admin2']}, {place['admin1']}, {place['cc']}"
+                        caption = f"{timestamp.isoformat()} • {address}"
+                        log.info(f"\t{caption}")
+                        text(caption)
 
-        popup: folium.Popup = folium.Popup(html=html.getvalue(), lazy=True)
-        tooltip: folium.Tooltip = folium.Tooltip(text=html.getvalue())
-        marker: folium.Marker = folium.Marker(
-            location=(latitude, longitude),
-            tooltip=tooltip,
-            popup=popup,
-            icon=folium.Icon(icon="camera", color="green"),
-            lazy=True,
-        )
-        _ = marker.add_to(map)
+            popup: folium.Popup = folium.Popup(html=html.getvalue(), lazy=True)
+            tooltip: folium.Tooltip = folium.Tooltip(text=html.getvalue())
+            marker: folium.Marker = folium.Marker(
+                location=(latitude, longitude),
+                tooltip=tooltip,
+                popup=popup,
+                icon=folium.Icon(
+                    icon="camera", color="blue" if source == "gps" else "cadetblue"
+                ),
+                lazy=True,
+            )
+            _ = marker.add_to(map)
 
     log.info("Adding overlays")
     # Enable map to go fullscreen
@@ -325,8 +342,8 @@ def build_map(gpxs, webps) -> bytes:
     # "Spiderify" overlapping markers so they can be clicked
     oms = folium.plugins.OverlappingMarkerSpiderfier(
         keep_spiderfied=True,
-        nearby_distance=100,  # px gap to decide markers overlap
-        circle_spiral_switchover=10,  # how many markers to switch circle to spiral
+        nearby_distance=50,  # px gap to decide markers overlap
+        circle_spiral_switchover=8,  # how many markers to switch circle to spiral
         leg_weight=2.0,
     )
     _ = oms.add_to(map)
