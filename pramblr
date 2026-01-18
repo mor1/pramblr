@@ -8,6 +8,7 @@
 #   "pillow-heif>=1.1.1",
 #   "pillow>=12.1.0",
 #   "rich>=13.7.1",
+#   "timezonefinder>=8.2.1",
 #   "yaml-rs>=0.0.10",
 #   "yattag>=1.16.1",
 # ]
@@ -59,6 +60,7 @@ import io  # noqa:E402
 import warnings  # noqa:E402
 from pathlib import Path  # noqa:E402
 from typing import override  # noqa:E402
+from zoneinfo import ZoneInfo  # noqa:E402
 
 import bs4  # noqa:E402
 import click  # noqa:E402
@@ -71,6 +73,7 @@ import pillow_heif  # noqa: E402
 import yaml_rs as yaml  # noqa:E402
 from PIL import Image  # noqa: E402
 from sklearn.cluster import KMeans  # noqa:E402
+from timezonefinder import timezone_at  # noqa:E402
 from yattag import Doc  # noqa:E402
 
 SUPPORTED_IMAGE_FORMATS = (".jpg", ".jpeg", ".heic")
@@ -207,22 +210,22 @@ def location_of(path, debug=False) -> tuple[float, float] | None:
     return latitude, longitude
 
 
-def interpolate_location(timestamp, segment, debug=False) -> tuple[float, float] | None:
-    offset = dt.timedelta(0)  # time_offset, seconds
-    times = [t.replace(tzinfo=None) + offset for t in segment["time"]]
+def interpolate_location(timestamp, segment) -> tuple[float, float] | None:
+    # get the timezone for the track(s)
+    lat, lng = segment["latlon"][0]
+    tz = ZoneInfo(timezone_at(lat=lat, lng=lng))
+    log.debug(f"{lat=} {lng=} {tz=} {segment['latlon'][:5]=}")
+
+    timestamp = timestamp.replace(tzinfo=tz)
+    times = [t.astimezone(tz) for t in segment["time"]]
     diff = []
-    for t in times:
-        d = (timestamp - t).seconds if t <= timestamp else (t - timestamp).seconds
+    for i, t in enumerate(times):
+        d = abs((timestamp - t).total_seconds())
         diff.append(d)
 
-    log.debug(f"{len(diff)=} {len(segment["lat"])=} {len(segment["lon"])=}")
-
-    bestidx = np.argmin(diff)
-    log.debug(f"{bestidx=}")
-
+    bestidx = diff.index(min(diff))
     (latitude, longitude) = segment["latlon"][bestidx]
-
-    log.debug(f"{timestamp=} {latitude=} {longitude=}")
+    log.debug(f"{timestamp=} {bestidx=} {diff[bestidx]=} {latitude=} {longitude=}")
     return latitude, longitude
 
 
