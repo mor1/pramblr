@@ -38,7 +38,7 @@ from rich.logging import RichHandler
 errcon = Console(stderr=True)
 logging.basicConfig(
     level="INFO",
-    format="%(filename)s:%(lineno)d->%(funcName)s %(message)s",
+    format="%(funcName)s:%(lineno)d %(message)s",
     datefmt="[%X]",
     handlers=[RichHandler(console=errcon, rich_tracebacks=True)],
 )
@@ -143,12 +143,10 @@ def convert_photos(outf: str, photos: tuple[Path], overwrite: bool) -> list[Path
             continue
 
         if output in webps_to_delete:
-            log.debug(f"removing {output=} from {webps_to_delete=}")
             webps_to_delete.remove(output)
 
         webps.append(output)
 
-        log.debug(f"{output=} {output.is_file()} {os.access(output, os.R_OK)=}")
         if not overwrite and output.is_file() and os.access(output, os.R_OK):
             log.info(f"skipping file {output}")
             continue
@@ -158,7 +156,6 @@ def convert_photos(outf: str, photos: tuple[Path], overwrite: bool) -> list[Path
             image.thumbnail((640, 480))
             image.save(output, "WEBP", quality=85, exif=image.getexif(), optimize=True)
 
-    log.debug(f"{webps_to_delete=}")
     for f in webps_to_delete:
         log.info(f"removing {f=} as no longer referenced in configuration")
         f.unlink()
@@ -181,15 +178,11 @@ def location_of(path, debug=False) -> tuple[float, float] | None:
 
     exif = image.getexif()
     exifinfo = {exiftags.TAGS.get(k, k): v for k, v in exif.items()}
-    log.debug(f"{exifinfo=}")
 
     ifdkey = [k for k, v in exiftags.TAGS.items() if v == "GPSInfo"][0]
     ifd = exif.get_ifd(ifdkey)
-    log.debug(f"{ifd=}")
 
     gpsinfo = {exiftags.GPSTAGS.get(k, k): v for k, v in ifd.items()}
-    log.debug(f"{gpsinfo=}")
-
     if "GPSLatitude" not in gpsinfo:
         return None
 
@@ -242,28 +235,22 @@ def extend(
             case list():
                 if k not in lsegment:
                     lsegment[k] = []
-                # log.debug(f"list: pre: {k=} {len(lsegment[k])=} {len(v)=}")
                 lsegment[k].extend(v)
-                # log.debug(f"list: post: {k=} {len(lsegment[k])=}")
             case np.ndarray():
                 if k not in lsegment:
                     lsegment[k] = np.empty_like(rsegment[k])
-                # log.debug(f"ndarray: pre: {k=} {len(lsegment[k])=} {len(v)=}")
                 lsegment[k] = np.concatenate([lsegment[k], v])
-                # log.debug(f"ndarray: post: {k=} {len(lsegment[k])=}")
             case np.float64():  # noqa: reportUnnecessaryComparison
                 if k not in lsegment:
-                    lsegment[k] = 0.0
-                # log.debug(f"float64: pre: {k=} {lsegment[k]=} {v=}")
+                    lsegment[k] = np.float64(0)
                 lsegment[k] += rsegment[k]
-                # log.debug(f"float64: post: {k=} {lsegment[k]=}")
             case int():
                 pass
 
     return lsegment
 
 
-def build_map(gpxs, webps, debug=False) -> bytes:
+def build_map(gpxs, webps) -> bytes:
     """Build a map with the tracks overlaid."""
 
     # Create the map object
@@ -276,6 +263,7 @@ def build_map(gpxs, webps, debug=False) -> bytes:
     # all segments into a single segment, adding start/end markers as we go.
     segment: dict[str, np.ndarry | list] = {}
     for gpxfile in gpxs:
+        log.info(f"Processing GPX track {gpxfile=}")
         with open(gpxfile, "r") as fp:
             for track in gx.read_gpx_file(fp):
                 trackseg: dict[str, np.ndarry | list] = {}
@@ -294,7 +282,7 @@ def build_map(gpxs, webps, debug=False) -> bytes:
         line_options={"weight": 8},
     )
 
-    # Attach photos to the track; HEIC input only for now
+    # Attach photos to the track
     for webp in webps:
         timestamp = timestamp_of(webp, debug)
         source = "gps"
@@ -305,6 +293,7 @@ def build_map(gpxs, webps, debug=False) -> bytes:
             )
             source = "timestamp"
             location = interpolate_location(timestamp, segment, debug)
+        log.info(f"Attaching image {webp=} to track...")
 
             if not location:
                 log.warning(f"could not obtain location for {webp=}; skipping")
@@ -330,6 +319,7 @@ def build_map(gpxs, webps, debug=False) -> bytes:
         )
         _ = marker.add_to(map)
 
+    log.info("Adding overlays")
     # Enable map to go fullscreen
     _ = folium.plugins.Fullscreen().add_to(map)
 
@@ -343,10 +333,12 @@ def build_map(gpxs, webps, debug=False) -> bytes:
     _ = oms.add_to(map)
 
     # Fit map to viewport
+    log.info("Fitting to viewport")
     boundary = map.get_bounds()
     map.fit_bounds(boundary, padding=(3, 3))
 
     # Render map, returning the rendered content
+    log.info("Rendering map")
     html = BytesIONoClose()
     map.save(html)
     return html.getvalue()
@@ -398,7 +390,6 @@ def pramblr(
         log.setLevel(logging.DEBUG)
 
     # parse configuration if provided
-
     with open(configf, "r") as fp:
         config = yaml.loads(fp.read()) if configf else None
     prefix = configf.expanduser().parent if configf else "."
@@ -429,14 +420,14 @@ def pramblr(
     log.debug(f"{photos=}")
 
     # ensure we have something to do!
-    if not config and len(gpxs) == 0:
+    if len(gpxs) == 0:
         raise click.UsageError("no configuration or GPX files were provided")
 
     # convert photos if needed
     webps = convert_photos(outf, photos, overwrite)
 
     # make map and munge its HTML
-    html = build_map(gpxs, webps, debug)
+    html = build_map(gpxs, webps)
     soup = bs4.BeautifulSoup(html, "html.parser")
     soup.title = soup.new_tag("title")
     soup.title.string = title
