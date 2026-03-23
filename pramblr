@@ -7,6 +7,7 @@
 #   "gpxplotter>=0.2.12",
 #   "pillow-heif>=1.1.1",
 #   "pillow>=12.1.0",
+#   "python-ffmpeg>=2.0.12",
 #   "reverse_geocoder>=1.5.1",
 #   "rich>=13.7.1",
 #   "timezonefinder>=8.2.1",
@@ -65,6 +66,7 @@ from zoneinfo import ZoneInfo  # noqa:E402
 
 import bs4  # noqa:E402
 import click  # noqa:E402
+import ffmpeg as ffm  # noqa:E402
 import folium  # noqa:E402
 import folium.plugins  # noqa:E402
 import gpxplotter as gx  # noqa:E402
@@ -79,6 +81,7 @@ from timezonefinder import timezone_at  # noqa:E402
 from yattag import Doc  # noqa:E402
 
 SUPPORTED_IMAGE_FORMATS = (".jpg", ".jpeg", ".heic")
+SUPPORTED_VIDEO_FORMATS = (".mov",)
 
 
 class BytesIONoClose(io.BytesIO):
@@ -128,6 +131,68 @@ def monkey_patch_cluster_velocities(velocities, n_clusters=5):
 
 
 gx.gpxread.cluster_velocities = monkey_patch_cluster_velocities
+
+
+def convert_videos(outf: str, videos: tuple[Path], overwrite: bool) -> list[Path]:
+    mp4s: list[Path] = []
+    prefix: Path = Path(outf).parent.expanduser()
+
+    prefix.mkdir(exist_ok=True, parents=True)
+    mp4s_to_delete = [Path(p) for p in glob.glob(str(prefix / "*.mp4"))]
+    log.debug(f"{mp4s_to_delete=}")
+
+    for video in [
+        v for v in videos if Path(v).suffix.lower() in SUPPORTED_VIDEO_FORMATS
+    ]:
+        output = prefix / Path(video).with_suffix(".mp4").name
+
+        if output in mp4s:
+            log.warning(f"{video=} would overwrite existing {output=}; skipping")
+            continue
+
+        if output in mp4s_to_delete:
+            mp4s_to_delete.remove(output)
+
+        mp4s.append(output)
+
+        if not overwrite and output.is_file() and os.access(output, os.R_OK):
+            log.info(f"skipping file {output}")
+            continue
+
+        try:
+            # from https://ffmpeg.party/guides/av1/
+            ffmpeg = (
+                ffm.FFmpeg()
+                .option("y")
+                .input(video)
+                .output(
+                    output,
+                    {
+                        "codec:v": "libx264",
+                        "filter:v": "scale=960:-1",
+                        "pix_fmt": "yuv420p",
+                        "profile:v": "main",
+                        "preset": "veryslow",
+                        "crf": 22,
+                        "codec:a": "aac",
+                        "movflags": "+faststart",
+                    },
+                )
+            )
+
+            @ffmpeg.on("progress")
+            def on_progress(progress: ffm.Progress):
+                log.info(f"{video=} {progress}")
+
+            ffmpeg.execute()
+        except Exception as exc:
+            log.critical(f"MP4 transcode failed {video=}! continuing...")
+
+    for f in mp4s_to_delete:
+        log.info(f"removing {f=} as no longer referenced in configuration")
+        f.unlink()
+
+    return mp4s
 
 
 def convert_photos(outf: str, photos: tuple[Path], overwrite: bool) -> list[Path]:
@@ -252,7 +317,7 @@ def extend(
     return lsegment
 
 
-def build_map(gpxs, webps) -> bytes:
+def build_map(gpxs, webps, mp4s) -> bytes:
     """Build a map with the tracks overlaid."""
 
     # Create the map object
@@ -388,6 +453,12 @@ def build_map(gpxs, webps) -> bytes:
     help="Photos from the track.",
 )
 @click.option(
+    "--videos",
+    type=click.Path(exists=True, dir_okay=True, path_type=Path),
+    multiple=True,
+    help="Videos from the track.",
+)
+@click.option(
     "--overwrite", default=False, is_flag=True, help="Overwrite existing photos."
 )
 def pramblr(
@@ -397,6 +468,7 @@ def pramblr(
     title: str,
     gpxs: tuple[Path, ...],
     photos: tuple[Path, ...],
+    videos: tuple[Path, ...],
     overwrite: bool,
 ) -> None:
     """Process a set of GPX tracks into an interactive HTML/CSS/JS map, attaching photos."""
@@ -427,6 +499,10 @@ def pramblr(
     )
     log.debug(f"{gpxs=}")
 
+    # ensure we have something to do!
+    if len(gpxs) == 0:
+        raise click.UsageError("no configuration or GPX files were provided")
+
     # build list of photos
     photos = (
         tuple(Path(p).expanduser() for p in config.get("photos", photos))
@@ -435,15 +511,20 @@ def pramblr(
     )
     log.debug(f"{photos=}")
 
-    # ensure we have something to do!
-    if len(gpxs) == 0:
-        raise click.UsageError("no configuration or GPX files were provided")
+    # build list of videos
+    videos = (
+        tuple(Path(p).expanduser() for p in config.get("videos", videos))
+        if (config and config.get("videos", videos) is not None)
+        else videos
+    )
+    log.debug(f"{videos=}")
 
-    # convert photos if needed
+    # convert media if needed
     webps = convert_photos(outf, photos, overwrite)
+    mp4s = convert_videos(outf, videos, overwrite)
 
     # make map and munge its HTML
-    html = build_map(gpxs, webps)
+    html = build_map(gpxs, webps, mp4s)
     soup = bs4.BeautifulSoup(html, "html.parser")
     soup.title = soup.new_tag("title")
     soup.title.string = title
