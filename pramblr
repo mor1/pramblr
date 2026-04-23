@@ -374,7 +374,9 @@ def build_map(gpxs, webps, mp4s) -> bytes:
             ):
                 with tag("a", href=str(src)):
                     with tag("figure"):
-                        html.stag("img", alt=str(src), src=str(src))
+                        html.stag(
+                            "img", alt=str(src), src=str(src), style="height:280px"
+                        )
                     with tag("figcaption"):
                         place = rg.search((latitude, longitude))[0]
                         log.debug(f"{place=}")
