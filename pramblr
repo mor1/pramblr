@@ -94,7 +94,7 @@ class BytesIONoClose(io.BytesIO):
 
 # cluster_velocities() throws an error if you pass in a segment with fewer than
 # `n_clusters`(default: 5) waypoints. One of my tracks has a segment with only
-# four it turns out. So, monkey patch the funciton to clip `n_clusters` to the
+# four it turns out. So, monkey patch the function to clip `n_clusters` to the
 # minimum of 5 and the number of waypoints provided.
 def monkey_patch_cluster_velocities(velocities, n_clusters=5):
     """Group the velocities into a predefined set of clusters.
