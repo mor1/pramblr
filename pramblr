@@ -244,7 +244,6 @@ def timestamp_of(image) -> dt.datetime:
 
 def location_of(image, debug=False) -> tuple[float, float] | None:
     exif = image.getexif()
-    exifinfo = {exiftags.TAGS.get(k, k): v for k, v in exif.items()}
 
     ifdkey = [k for k, v in exiftags.TAGS.items() if v == "GPSInfo"][0]
     ifd = exif.get_ifd(ifdkey)
@@ -282,10 +281,7 @@ def interpolate_location(timestamp, segment) -> tuple[float, float] | None:
 
     timestamp = timestamp.replace(tzinfo=tz)
     times = [t.astimezone(tz) for t in segment["time"]]
-    diff = []
-    for i, t in enumerate(times):
-        d = abs((timestamp - t).total_seconds())
-        diff.append(d)
+    diff = [abs((timestamp - t).total_seconds()) for t in times]
 
     bestidx = diff.index(min(diff))
     (latitude, longitude) = segment["latlon"][bestidx]
